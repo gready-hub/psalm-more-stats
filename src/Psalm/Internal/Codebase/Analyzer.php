@@ -1172,16 +1172,24 @@ final class Analyzer
     }
 
     /**
-     * @return array<string, float>
+     * @return array<string, array{'total_time': float, 'time_per_node': float, 'nodes_visited': int}>
      */
     public function getFunctionTimings(): array
     {
         return $this->function_timings;
     }
 
-    public function addFunctionTiming(string $function_id, float $time_per_node): void
+    public function addFunctionTiming(
+        string $function_id,
+        float $total_time,
+        float $nodes_visited,
+    ): void
     {
-        $this->function_timings[$function_id] = $time_per_node;
+        $this->function_timings[$function_id] = [
+            'total_time' => $total_time,
+            'time_per_node' => $nodes_visited > 0 ? $total_time / $nodes_visited : $total_time,
+            'nodes_visited' => $nodes_visited,
+        ];
     }
 
     public function addNodeType(

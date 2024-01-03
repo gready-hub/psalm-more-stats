@@ -564,9 +564,13 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             $traverser->addVisitor($node_counter);
             $traverser->traverse($function_stmts);
 
-            if ($node_counter->count > 5) {
+            if ($node_counter->count > 0) {
                 $time_taken = microtime(true) - $time;
-                $codebase->analyzer->addFunctionTiming($cased_method_id, $time_taken / $node_counter->count);
+                $codebase->analyzer->addFunctionTiming(
+                    $cased_method_id,
+                    $time_taken,
+                    $node_counter->count
+                );
             }
         }
 

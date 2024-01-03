@@ -774,21 +774,117 @@ final class IssueBuffer
                     echo 'Slow-to-analyze functions' . "\n";
                     echo '-----------------' . "\n\n";
 
+                    /** @var array<string, array{'total_time': float, 'time_per_node': float, 'nodes_visited': int}> $function_timings */
                     $function_timings = $codebase->analyzer->getFunctionTimings();
 
-                    arsort($function_timings);
+                    $field = 'total_time';
+                    uasort(
+                        $function_timings,
+                        static fn (array $a, array $b): int => $b[$field] <=> $a[$field]
+                    );
+
+                    // Histogram buckets for file analysis times
+                    $buckets = [
+                        '0.001s' => [0, 0.0],
+                        '0.01s'  => [0, 0.0],
+                        '0.1s'   => [0, 0.0],
+                        '1s'     => [0, 0.0],
+                        '5s'     => [0, 0.0],
+                        '10s'    => [0, 0.0],
+                        '30s'    => [0, 0.0],
+                        '1m'     => [0, 0.0],
+                        '2m'     => [0, 0.0],
+                        '5m+'    => [0, 0.0],
+                    ];
 
                     $i = 0;
+                    $max_value = 0;
+                    $total_of_value = array_reduce(
+                        $function_timings,
+                        static fn (float $carry, array $data): float => $carry + $data[$field],
+                        0.0
+                    );
+                    foreach ($function_timings as $function_id => $data) {
+                        $value = $data[$field];
 
-                    foreach ($function_timings as $function_id => $time) {
-                        if (++$i > 10) {
-                            break;
+                        // Print top 100 functions
+                        if (++$i <= 100) {
+                            $time_str = number_format($value, 3);
+                            $time_per_node = number_format($data['time_per_node'] * 1_000);
+                            $percent_str = number_format($value / $total_of_value * 100, 2);
+                            // Print time, time per node, percent overall, nodes visited, and function id
+                            echo str_pad($time_str . 's', 10, ' ', STR_PAD_LEFT) . ' ';
+                            echo str_pad($percent_str . '%', 6, ' ', STR_PAD_LEFT) . ' ';
+                            echo str_pad($time_per_node . 'ms', 10, ' ', STR_PAD_LEFT) . ' ';
+                            echo str_pad($data['nodes_visited'], 10, ' ', STR_PAD_LEFT) . ' ';
+                            echo $function_id . "\n";
                         }
 
-                        echo $function_id . ': ' . round(1_000 * $time, 2) . 'ms per node' . "\n";
+                        // Generate histogram buckets for file analysis times
+                        $max_value = max($max_value, $value);
+                        if ($value < 0.001) {
+                            $buckets['0.001s'][0]++;
+                            $buckets['0.001s'][1] += $value;
+                        } elseif ($value < 0.01) {
+                            $buckets['0.01s'][0]++;
+                            $buckets['0.01s'][1] += $value;
+                        } elseif ($value < 0.1) {
+                            $buckets['0.1s'][0]++;
+                            $buckets['0.1s'][1] += $value;
+                        } elseif ($value < 1) {
+                            $buckets['1s'][0]++;
+                            $buckets['1s'][1] += $value;
+                        } elseif ($value < 5) {
+                            $buckets['5s'][0]++;
+                            $buckets['5s'][1] += $value;
+                        } elseif ($value < 10) {
+                            $buckets['10s'][0]++;
+                            $buckets['10s'][1] += $value;
+                        } elseif ($value < 30) {
+                            $buckets['30s'][0]++;
+                            $buckets['30s'][1] += $value;
+                        } elseif ($value < 60) {
+                            $buckets['1m'][0]++;
+                            $buckets['1m'][1] += $value;
+                        } elseif ($value < 120) {
+                            $buckets['2m'][0]++;
+                            $buckets['2m'][1] += $value;
+                        } else {
+                            $buckets['5m+'][0]++;
+                            $buckets['5m+'][1] += $value;
+                        }
                     }
 
                     echo "\n";
+
+                    $max_width = 50;
+                    $max_count = max(array_column($buckets, 0));
+                    foreach ($buckets as $bucket_name => [$count, $sum]) {
+                        echo str_pad($bucket_name, 8, ' ', STR_PAD_LEFT) . ': ';
+
+                        if ($count === 0) {
+                            $whitespace = str_repeat(' ', $max_width);
+                            echo "|{$whitespace}| 0 functions, 0.0s, 0.0ms per function\n";
+                            continue;
+                        }
+
+                        // Print bar as ░ but scale it to max width and mark end of bar with | after
+                        // the max width padding remaining with spaces to the right.
+                        // log scale the bar width to make it easier to see the distribution
+                        $bar_width = (int) round(log($count, $max_count) * $max_width);
+                        $bar = str_repeat('░', $bar_width);
+                        $whitespace = str_repeat(' ', max($max_width - $bar_width, 0));
+                        echo "|{$bar}{$whitespace}|";
+
+                        // Print count
+                        $count_str = number_format($count);
+                        $total_seconds_str = number_format($sum, 3);
+                        $avg_time_str = number_format($sum / $count, 3);
+                        echo " {$count_str} functions, {$total_seconds_str}s, {$avg_time_str}s per function\n";
+                    }
+
+                    echo "\n";
+
                 }
             }
         }
